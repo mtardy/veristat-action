@@ -1,0 +1,73 @@
+name: Run veristat on Tetragon
+on:
+  pull_request:
+    paths:
+      - 'action.yaml'
+      - '.github/workflows/test.yaml'
+  push:
+    paths:
+      - 'action.yaml'
+      - '.github/workflows/test.yaml'
+
+jobs:
+  simple:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Check out Tetragon repository
+      uses: actions/checkout@v4
+      with:
+        repository: "cilium/tetragon"
+        path: "tetragon"
+    
+    - name: Build Tetragon BPF programs
+      run: |
+        # LOCAL_CLANG=1 and install of LLVM/clang is for local act emulation
+        sudo apt-get -qq update && sudo apt-get install -y clang llvm
+        cd tetragon && LOCAL_CLANG=1 make tetragon-bpf
+
+    - name: Run veristat
+      uses: ./
+      with:
+        programs: "tetragon/bpf/objs/*.o"
+
+  compare:
+    runs-on: ubuntu-22.04
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Check out Tetragon repository main
+      uses: actions/checkout@v4
+      with:
+        repository: "cilium/tetragon"
+        path: "tetragon-main"
+        ref: "main"
+
+    - name: Build Tetragon BPF programs
+      run: |
+        # LOCAL_CLANG=1 and install of LLVM/clang is for local act emulation
+        sudo apt-get -qq update && sudo apt-get install -y clang llvm
+        cd tetragon-main && LOCAL_CLANG=1 make tetragon-bpf
+
+    - name: Check out Tetragon repository v0.11
+      uses: actions/checkout@v4
+      with:
+        repository: "cilium/tetragon"
+        path: "tetragon-11"
+        ref: "v0.11.0"
+    
+    - name: Build Tetragon BPF programs
+      run: |
+        # LOCAL_CLANG=1 and install of LLVM/clang is for local act emulation
+        # sudo apt-get -qq update && sudo apt-get install -y clang llvm
+        cd tetragon-11 && LOCAL_CLANG=1 make tetragon-bpf
+
+    - name: Run veristat
+      uses: ./
+      with:
+        compare: true
+        baseline-programs: "tetragon-main/bpf/objs/*.o"
+        comparison-programs: "tetragon-11/bpf/objs/*.o"

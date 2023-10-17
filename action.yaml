@@ -1,0 +1,107 @@
+name: 'Veristat'
+description: 'Run veristat on a set of libbpf-compatible BPF ELF object files'
+branding:
+  icon: 'activity'
+  color: 'blue'
+inputs:
+  programs:
+    description: 'Path to libbpf-compatible BPF ELF object files'
+  cache:
+    description: 'Cache download and build veristat'
+    default: 'true'
+  compare:
+    description: 'Comparison mode, compare the result of the analysis between baseline-programs and comparison-programs'
+    default: 'false'
+  baseline-programs:
+    description: 'Path to baseline libbpf-compatible BPF ELF object files to run the comparative analysis on'
+  comparison-programs:
+    description: 'Path to comparision libbpf-compatible BPF ELF object files to run the comparative analysis on'
+runs:
+  using: "composite"
+  steps:
+    # install section
+    - name: checkout veristat shallow
+      id: checkout-shallow
+      uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
+      with:
+        path: "veristat"
+        repository: "libbpf/veristat"
+    
+    - name: retrieve last commit ID
+      id: veristat-last-commit
+      shell: bash
+      run: echo "commit=$(git -C veristat rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+    - name: cache download and build veristat
+      if: ${{ inputs.cache == 'true' }}
+      id: cache-veristat
+      uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84 # v3.3.2
+      with:
+        path: /usr/local/bin/veristat
+        key: veristat-${{ steps.veristat-last-commit.outputs.commit }}
+
+    - name: checkout veristat submodules
+      if: ${{ steps.cache-veristat.outputs.cache-hit != 'true' }}
+      id: checkout
+      uses: actions/checkout@8ade135a41bc03ea155e62e844d188df1ea18608 # v4.1.0
+      with:
+        path: "veristat"
+        repository: "libbpf/veristat"
+        submodules: true
+    
+    - name: build and install veristat
+      if: ${{ steps.cache-veristat.outputs.cache-hit != 'true' }}
+      id: build-install
+      shell: bash
+      run: |
+        sudo apt-get -qq update && sudo apt-get -q install -y libelf-dev
+        make install -C veristat/src -j$(nproc)
+        veristat --version
+
+    # running section
+    - name: run veristat
+      if: ${{ inputs.compare != 'true' }}
+      id: run
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.programs }}" ]; then
+          echo "When running in non-compare mode, you need to provide the 'programs' input"
+          exit 1
+        fi
+        sudo veristat ${{ inputs.programs }} | tee output.txt
+
+    - name: check inputs for compare mode
+      if: ${{ inputs.compare == 'true' }}
+      id: run-compare-inputs
+      shell: bash
+      run: |
+        if [ -z "${{ inputs.baseline-programs }}" ] && [ -z "${{ inputs.comparison-programs }}" ]; then
+          echo "When running in compare mode, you need to provide the 'baseline-programs' and 'comparison-programs' inputs"
+          exit 1
+        fi
+
+    - name: run veristat for comparison on baseline
+      if: ${{ inputs.compare == 'true' }}
+      id: run-compare-baseline
+      shell: bash
+      run: sudo veristat ${{ inputs.baseline-programs }} -o csv > baseline.csv
+
+    - name: run veristat for comparison on comparison
+      if: ${{ inputs.compare == 'true' }}
+      id: run-compare-comparison
+      shell: bash
+      run: sudo veristat ${{ inputs.comparison-programs }} -o csv > comparison.csv
+
+    - name: run veristat compare
+      if: ${{ inputs.compare == 'true' }}
+      id: run-compare
+      shell: bash
+      run: sudo veristat -C baseline.csv comparison.csv | tee output.txt
+    
+    - name: send to job summary
+      id: job-summary
+      shell: bash
+      run: |
+        echo '```' >> $GITHUB_STEP_SUMMARY
+        cat output.txt >> $GITHUB_STEP_SUMMARY
+        echo '```' >> $GITHUB_STEP_SUMMARY
