@@ -11,7 +11,7 @@ on:
 
 jobs:
   fail-simple:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
     - name: Check out repository
       uses: actions/checkout@v6
@@ -21,7 +21,7 @@ jobs:
       uses: ./
 
   fail-compare:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
     - name: Check out repository
       uses: actions/checkout@v6
